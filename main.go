@@ -19,8 +19,8 @@ func main() {
 
 	cipher := Encrypt(plaintext, key)
 
-	fmt.Printf("Result:   %x", cipher)
-	fmt.Printf("Expected: 3925841d02dc09fbdc118597196a0b32")
+	fmt.Printf("Result: %x \n", cipher)
+	fmt.Printf("Expected:3925841d02dc09fbdc118597196a0b32 \n")
 
 	expected := [16]byte{
 		0x39, 0x25, 0x84, 0x1d,
