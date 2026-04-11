@@ -101,3 +101,42 @@ func mixColumns(s [4][4]byte) [4][4]byte {
 	}
 	return out
 }
+
+func keyExpansion(key [16]byte) [11][4][4]byte {
+	var w [44][4]byte
+
+	for i := 0; i < 4; i++ {
+		w[i] = [4]byte{
+			key[i*4], key[i*4+1],
+			key[i*4+2], key[i*4+3],
+		}
+	}
+
+	for i := 4; i < 44; i++ {
+		temp := w[i-1]
+		if i%4 == 0 {
+			temp = [4]byte{
+				temp[1], temp[2], temp[3], temp[0],
+			}
+			temp = [4]byte{
+				sBox[temp[0]], sBox[temp[1]],
+				sBox[temp[2]], sBox[temp[3]],
+			}
+			temp[0] ^= rcon[i/4]
+		}
+		w[i][0] = w[i-4][0] ^ temp[0]
+		w[i][1] = w[i-4][1] ^ temp[1]
+		w[i][2] = w[i-4][2] ^ temp[2]
+		w[i][3] = w[i-4][3] ^ temp[3]
+	}
+
+	var roundKeys [11][4][4]byte
+	for rk := 0; rk < 11; rk++ {
+		for col := 0; col < 4; col++ {
+			for row := 0; row < 4; row++ {
+				roundKeys[rk][row][col] = w[rk*4+col][row]
+			}
+		}
+	}
+	return roundKeys
+}
