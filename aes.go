@@ -19,6 +19,17 @@ var sBox = [256]byte{
 	0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 }
 
+/*
+The function take a 16 byte array and maps it onto a 4 by 4 matrix
+by interpeting the input as four 4 by chunks. It places these chunks collumn
+by column. It uses the column index to determin which group of 4 bytes is currently
+being processed and row index to determin whcih the position within that group.
+This is achived by computing the original index as col * 4 + row, which groups linear arrays
+into blocks of four. The inverse function reverses this exact mapping by reading the matrix column
+by column in the same order and reconstructing the original linear array.
+
+*/
+
 var rcon = [10]byte{
 	0x01, 0x02, 0x04, 0x08,
 	0x10, 0x20, 0x40, 0x80,
@@ -45,6 +56,13 @@ func fromState(s [4][4]byte) [16]byte {
 	return block
 }
 
+/*
+This step applies a nonlinear substitution to every byte in the state u
+sing a fixed lookup table called the S-box. The purpose is to destroy
+linear relationships between input and output, which would otherwise
+ make the cipher vulnerable to algebraic and linear attacks.
+*/
+
 func subBytes(s [4][4]byte) [4][4]byte {
 	var out [4][4]byte
 	for r := 0; r < 4; r++ {
@@ -54,6 +72,16 @@ func subBytes(s [4][4]byte) [4][4]byte {
 	}
 	return out
 }
+
+/*
+This function cyclically shifts each row of the state
+by a different offset, with the first row unchanged,
+the second shifted by one, the third by two, and the fourth by
+three positions. While it appears simple, its role is essential:
+it breaks the alignment of bytes within columns so that subsequent
+operations can mix data across different columns.
+*/
+
 func shiftRows(s [4][4]byte) [4][4]byte {
 	var out [4][4]byte
 
@@ -72,6 +100,16 @@ func shiftRows(s [4][4]byte) [4][4]byte {
 	return out
 }
 
+/*
+This function performs multiplication in the finite field GF(2^8),
+which is fundamentally different from standard integer multiplication.
+Instead of working with real numbers, AES treats bytes as polynomials
+and reduces results modulo an irreducible polynomial. This ensures
+that all operations remain within 8 bits while preserving algebraic
+structure. The conditional XOR with 0x1b implements the modular reduction
+step, which is necessary when intermediate values exceed the field size.
+*/
+
 func gmul(a, b byte) byte {
 	var p byte
 	for i := 0; i < 8; i++ {
@@ -88,6 +126,15 @@ func gmul(a, b byte) byte {
 	return p
 }
 
+/*
+In this step, each column of the state is transformed using
+a fixed matrix multiplication over GF(2^8). This operation
+combines the four bytes of each column in such a way that
+every output byte depends on all four input bytes. Its purpose
+is to create strong diffusion, meaning that a small change in the
+input spreads rapidly throughout the state.
+*/
+
 func mixColumns(s [4][4]byte) [4][4]byte {
 	var out [4][4]byte
 	for c := 0; c < 4; c++ {
@@ -102,6 +149,15 @@ func mixColumns(s [4][4]byte) [4][4]byte {
 	}
 	return out
 }
+
+/*
+This function takes the original 16-byte key and expands
+it into a sequence of round keys used throughout
+the encryption process. It does this by iteratively
+generating new 4-byte words from previous ones,
+applying rotation, substitution via the S-box,
+and the addition of round constants.
+*/
 
 func keyExpansion(key [16]byte) [11][4][4]byte {
 	var w [44][4]byte
