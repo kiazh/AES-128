@@ -1,4 +1,4 @@
-package aes
+package main
 
 var sBox = [256]byte{
 	0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
@@ -141,4 +141,34 @@ func keyExpansion(key [16]byte) [11][4][4]byte {
 	return roundKeys
 }
 
-//
+func addRoundKey(s, rk [4][4]byte) [4][4]byte {
+	var out [4][4]byte
+	for r := 0; r < 4; r++ {
+		for c := 0; c < 4; c++ {
+			out[r][c] = s[r][c] ^ rk[r][c]
+		}
+	}
+	return out
+}
+
+func Encrypt(plaintext, key [16]byte) [16]byte {
+
+	rks := keyExpansion(key)
+
+	state := toState(plaintext)
+
+	state = addRoundKey(state, rks[0])
+
+	for round := 1; round <= 9; round++ {
+		state = subBytes(state)
+		state = shiftRows(state)
+		state = mixColumns(state)
+		state = addRoundKey(state, rks[round])
+	}
+
+	state = subBytes(state)
+	state = shiftRows(state)
+	state = addRoundKey(state, rks[10])
+
+	return fromState(state)
+}
