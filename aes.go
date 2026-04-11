@@ -43,3 +43,61 @@ func fromState(s [4][4]byte) [16]byte {
 	}
 	return block
 }
+
+func subBytes(s [4][4]byte) [4][4]byte {
+	var out [4][4]byte
+	for r := 0; r < 4; r++ {
+		for c := 0; c < 4; c++ {
+			out[r][c] = sBox[s[r][c]]
+		}
+	}
+	return out
+}
+func shiftRows(s [4][4]byte) [4][4]byte {
+	var out [4][4]byte
+
+	out[0][0], out[0][1], out[0][2], out[0][3] =
+		s[0][0], s[0][1], s[0][2], s[0][3]
+
+	out[1][0], out[1][1], out[1][2], out[1][3] =
+		s[1][1], s[1][2], s[1][3], s[1][0]
+
+	out[2][0], out[2][1], out[2][2], out[2][3] =
+		s[2][2], s[2][3], s[2][0], s[2][1]
+
+	out[3][0], out[3][1], out[3][2], out[3][3] =
+		s[3][3], s[3][0], s[3][1], s[3][2]
+
+	return out
+}
+
+func gmul(a, b byte) byte {
+	var p byte
+	for i := 0; i < 8; i++ {
+		if b&0x01 != 0 {
+			p ^= a
+		}
+		hiBit := a & 0x80
+		a <<= 1
+		if hiBit != 0 {
+			a ^= 0x1b
+		}
+		b >>= 1
+	}
+	return p
+}
+
+func mixColumns(s [4][4]byte) [4][4]byte {
+	var out [4][4]byte
+	for c := 0; c < 4; c++ {
+		s0 := s[0][c]
+		s1 := s[1][c]
+		s2 := s[2][c]
+		s3 := s[3][c]
+		out[0][c] = gmul(2, s0) ^ gmul(3, s1) ^ s2 ^ s3
+		out[1][c] = s0 ^ gmul(2, s1) ^ gmul(3, s2) ^ s3
+		out[2][c] = s0 ^ s1 ^ gmul(2, s2) ^ gmul(3, s3)
+		out[3][c] = gmul(3, s0) ^ s1 ^ s2 ^ gmul(2, s3)
+	}
+	return out
+}
