@@ -23,3 +23,23 @@ var rcon = [11]byte{
 	0x00, 0x01, 0x02, 0x04, 0x08,
 	0x10, 0x20, 0x40, 0x80, 0x1b, 0x36,
 }
+
+func toState(block [16]byte) [4][4]byte {
+	var s [4][4]byte
+	for col := 0; col < 4; col++ {
+		for row := 0; row < 4; row++ {
+			s[row][col] = block[col*4+row]
+		}
+	}
+	return s
+}
+
+func fromState(s [4][4]byte) [16]byte {
+	var block [16]byte
+	for col := 0; col < 4; col++ {
+		for row := 0; row < 4; row++ {
+			block[col*4+row] = s[row][col]
+		}
+	}
+	return block
+}
