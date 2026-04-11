@@ -198,6 +198,13 @@ func keyExpansion(key [16]byte) [11][4][4]byte {
 	return roundKeys
 }
 
+/*
+This function XORs the state with a round-specific key derived from the original encryption key.
+It is the only step where the secret key directly influences the data, making it fundamental
+to the security of AES. XOR is used because it is simple, reversible, and interacts well with
+the rest of the operations.
+*/
+
 func addRoundKey(s, rk [4][4]byte) [4][4]byte {
 	var out [4][4]byte
 	for r := 0; r < 4; r++ {
