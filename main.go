@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 )
 
 func main() {
@@ -14,62 +16,97 @@ func main() {
 		0x09, 0xcf, 0x4f, 0x3c,
 	}
 
-	var choice int
+	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Println("press 1 to test encryption")
-	fmt.Println("press 2 to enter your own plaintext")
+	fmt.Println("Press 1 for Encrypt")
+	fmt.Println("Press 2 for Decrypt")
+	fmt.Println("Press 3 for Known Encrypt Test")
 	fmt.Print("Enter your choice: ")
-	fmt.Scan(&choice)
+	choiceLine, _ := reader.ReadString('\n')
+	choiceLine = strings.TrimSpace(choiceLine)
+	choice, err := strconv.Atoi(choiceLine)
+	if err != nil {
+		fmt.Println("Invalid choice.")
+		return
+	}
 
 	switch choice {
-
 	case 1:
+		fmt.Print("Enter plaintext (16 chars): ")
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+		if len(input) != 16 {
+			fmt.Println("Plaintext must be exactly 16 chars.")
+			return
+		}
+		var plaintext [16]byte
+		copy(plaintext[:], []byte(input))
+		cipher := Encrypt(plaintext, key)
+		fmt.Printf("Ciphertext hex: %x\n", cipher)
+	case 2:
+		fmt.Print("Enter ciphertext hex (32 hex chars): ")
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+		if len(input) != 32 {
+			fmt.Println("Ciphertext must be exactly 32 hex chars.")
+			return
+		}
+		decoded, ok := parseHex16(input)
+		if !ok {
+			fmt.Println("Invalid hex input.")
+			return
+		}
+		plain := Decrypt(decoded, key)
+		fmt.Printf("Plaintext: %s\n", string(plain[:]))
+		fmt.Printf("Plaintext hex: %x\n", plain)
+	case 3:
 		plaintext := [16]byte{
 			0x32, 0x43, 0xf6, 0xa8,
 			0x88, 0x5a, 0x30, 0x8d,
 			0x31, 0x31, 0x98, 0xa2,
 			0xe0, 0x37, 0x07, 0x34,
 		}
-
 		cipher := Encrypt(plaintext, key)
-
-		fmt.Printf("Result: %x\n", cipher)
-		fmt.Printf("Expected: 3925841d02dc09fbdc118597196a0b32\n")
-
+		fmt.Printf("Result:   %x\n", cipher)
+		fmt.Println("Expected: 3925841d02dc09fbdc118597196a0b32")
 		expected := [16]byte{
 			0x39, 0x25, 0x84, 0x1d,
 			0x02, 0xdc, 0x09, 0xfb,
 			0xdc, 0x11, 0x85, 0x97,
 			0x19, 0x6a, 0x0b, 0x32,
 		}
-
 		if cipher == expected {
-			fmt.Println("PASS — your AES-128 is correct!")
+			fmt.Println("PASS")
 		} else {
-			fmt.Println("FAIL — something is wrong.")
+			fmt.Println("FAIL")
 		}
-
-	case 2:
-		reader := bufio.NewReader(os.Stdin)
-
-		fmt.Print("Enter plaintext (16 chars): ")
-		input, _ := reader.ReadString('\n')
-
-		b := []byte(input)
-
-		if len(b) < 16 {
-			fmt.Println("Must be at least 16 bytes")
-			return
-		}
-
-		var plaintext [16]byte
-		copy(plaintext[:], b[:16])
-
-		cipher := Encrypt(plaintext, key)
-		fmt.Printf("Encrypted: %x\n", cipher)
-
 	default:
-		fmt.Println("Invalid choice. Program will close.")
-		return
+		fmt.Println("Invalid choice.")
+	}
+}
+
+func parseHex16(s string) ([16]byte, bool) {
+	var out [16]byte
+	for i := 0; i < 16; i++ {
+		hi, okHi := hexNibble(s[i*2])
+		lo, okLo := hexNibble(s[i*2+1])
+		if !okHi || !okLo {
+			return [16]byte{}, false
+		}
+		out[i] = hi<<4 | lo
+	}
+	return out, true
+}
+
+func hexNibble(c byte) (byte, bool) {
+	switch {
+	case c >= '0' && c <= '9':
+		return c - '0', true
+	case c >= 'a' && c <= 'f':
+		return c - 'a' + 10, true
+	case c >= 'A' && c <= 'F':
+		return c - 'A' + 10, true
+	default:
+		return 0, false
 	}
 }

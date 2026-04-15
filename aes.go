@@ -19,6 +19,8 @@ var sBox = [256]byte{
 	0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 }
 
+var invSBox = buildInvSBox()
+
 /*
 The function take a 16 byte array and maps it onto a 4 by 4 matrix
 by interpeting the input as four 4 by chunks. It places these chunks collumn
@@ -73,6 +75,16 @@ func subBytes(s [4][4]byte) [4][4]byte {
 	return out
 }
 
+func invSubBytes(s [4][4]byte) [4][4]byte {
+	var out [4][4]byte
+	for r := 0; r < 4; r++ {
+		for c := 0; c < 4; c++ {
+			out[r][c] = invSBox[s[r][c]]
+		}
+	}
+	return out
+}
+
 /*
 This function cyclically shifts each row of the state
 by a different offset, with the first row unchanged,
@@ -96,6 +108,24 @@ func shiftRows(s [4][4]byte) [4][4]byte {
 
 	out[3][0], out[3][1], out[3][2], out[3][3] =
 		s[3][3], s[3][0], s[3][1], s[3][2]
+
+	return out
+}
+
+func invShiftRows(s [4][4]byte) [4][4]byte {
+	var out [4][4]byte
+
+	out[0][0], out[0][1], out[0][2], out[0][3] =
+		s[0][0], s[0][1], s[0][2], s[0][3]
+
+	out[1][0], out[1][1], out[1][2], out[1][3] =
+		s[1][3], s[1][0], s[1][1], s[1][2]
+
+	out[2][0], out[2][1], out[2][2], out[2][3] =
+		s[2][2], s[2][3], s[2][0], s[2][1]
+
+	out[3][0], out[3][1], out[3][2], out[3][3] =
+		s[3][1], s[3][2], s[3][3], s[3][0]
 
 	return out
 }
@@ -146,6 +176,21 @@ func mixColumns(s [4][4]byte) [4][4]byte {
 		out[1][c] = s0 ^ gmul(2, s1) ^ gmul(3, s2) ^ s3
 		out[2][c] = s0 ^ s1 ^ gmul(2, s2) ^ gmul(3, s3)
 		out[3][c] = gmul(3, s0) ^ s1 ^ s2 ^ gmul(2, s3)
+	}
+	return out
+}
+
+func invMixColumns(s [4][4]byte) [4][4]byte {
+	var out [4][4]byte
+	for c := 0; c < 4; c++ {
+		s0 := s[0][c]
+		s1 := s[1][c]
+		s2 := s[2][c]
+		s3 := s[3][c]
+		out[0][c] = gmul(14, s0) ^ gmul(11, s1) ^ gmul(13, s2) ^ gmul(9, s3)
+		out[1][c] = gmul(9, s0) ^ gmul(14, s1) ^ gmul(11, s2) ^ gmul(13, s3)
+		out[2][c] = gmul(13, s0) ^ gmul(9, s1) ^ gmul(14, s2) ^ gmul(11, s3)
+		out[3][c] = gmul(11, s0) ^ gmul(13, s1) ^ gmul(9, s2) ^ gmul(14, s3)
 	}
 	return out
 }
@@ -235,4 +280,31 @@ func Encrypt(plaintext, key [16]byte) [16]byte {
 	state = addRoundKey(state, rks[10])
 
 	return fromState(state)
+}
+
+func Decrypt(ciphertext, key [16]byte) [16]byte {
+	rks := keyExpansion(key)
+	state := toState(ciphertext)
+	state = addRoundKey(state, rks[10])
+
+	for round := 9; round >= 1; round-- {
+		state = invShiftRows(state)
+		state = invSubBytes(state)
+		state = addRoundKey(state, rks[round])
+		state = invMixColumns(state)
+	}
+
+	state = invShiftRows(state)
+	state = invSubBytes(state)
+	state = addRoundKey(state, rks[0])
+
+	return fromState(state)
+}
+
+func buildInvSBox() [256]byte {
+	var inv [256]byte
+	for i := 0; i < 256; i++ {
+		inv[sBox[i]] = byte(i)
+	}
+	return inv
 }
