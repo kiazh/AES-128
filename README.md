@@ -14,16 +14,17 @@ Ciphertext 3925841d02dc09fbdc118597196a0b32  ✓
 
 1. [Background](#background)
 2. [The Math: GF(2⁸)](#the-math-gf28)
-3. [S-Box Construction](#s-box-construction)
+3. [S-Box](#s-box)
 4. [The Four Round Operations](#the-four-round-operations)
-   - [SubBytes](#subbytes)
-   - [ShiftRows](#shiftrows)
-   - [MixColumns](#mixcolumns)
-   - [AddRoundKey](#addroundkey)
+   * [SubBytes](#subbytes)
+   * [ShiftRows](#shiftrows)
+   * [MixColumns](#mixcolumns)
+   * [AddRoundKey](#addroundkey)
 5. [Key Expansion](#key-expansion)
 6. [Encryption and Decryption](#encryption-and-decryption)
 7. [Usage](#usage)
-8. [Security Notes](#security-notes)
+8. [What's Implemented vs. Hardcoded](#whats-implemented-vs-hardcoded)
+9. [Security Notes](#security-notes)
 
 ---
 
@@ -34,7 +35,7 @@ AES is a symmetric block cipher standardised by NIST in 2001 (FIPS 197). It oper
 The cipher was designed by Joan Daemen and Vincent Rijmen and was originally called **Rijndael**. Its security rests on three mathematical properties:
 
 | Property | Achieved by |
-|----------|-------------|
+| --- | --- |
 | **Confusion** — each ciphertext bit depends on many key bits | SubBytes (S-box) |
 | **Diffusion** — changing one plaintext bit changes ~half the ciphertext | ShiftRows + MixColumns |
 | **Key mixing** — the key is blended into every round | AddRoundKey |
@@ -56,7 +57,7 @@ state:  b0  b4  b8  b12
 
 ## The Math: GF(2⁸)
 
-Nearly everything in AES is arithmetic inside the **Galois field GF(2⁸)** — the finite field with 256 elements.
+Nearly everything in AES is arithmetic inside the **Galois field GF(2⁸)** — the finite field with 256 elements. This implementation actually computes in this field at runtime via the `gmul` function below.
 
 ### What is GF(2⁸)?
 
@@ -106,7 +107,7 @@ reduce mod x⁸+x⁴+x³+x+1:   0xc1
 
 ### The `gmul` Function
 
-The implementation uses the **Russian Peasant** (double-and-add) algorithm — no lookup tables needed:
+The implementation uses the **Russian Peasant** (double-and-add) algorithm — no log/antilog lookup tables:
 
 ```go
 func gmul(a, b byte) byte {
@@ -134,15 +135,17 @@ Every nonzero element in GF(2⁸) has a multiplicative inverse. This makes the S
 
 ---
 
-## S-Box Construction
+## S-Box
 
-The S-box is a 256-entry lookup table: `sBox[byte_in] = byte_out`.
+The S-box is a 256-entry substitution table: `sBox[byte_in] = byte_out`.
 
-Each output byte is computed in two steps:
+> **Implementation note.** This project embeds the standard FIPS-197 S-box as a 256-byte literal in `aes.go` rather than generating it at startup. The construction below is the mathematical *definition* the table satisfies — it is the spec, not the runtime path. Computing the table from first principles is a planned future change (see [What's Implemented vs. Hardcoded](#whats-implemented-vs-hardcoded)).
+
+The table satisfies a two-step definition for every input byte:
 
 ### Step 1 — Multiplicative Inverse in GF(2⁸)
 
-For input byte `b`, compute `b⁻¹` in GF(2⁸) such that `b · b⁻¹ = 1`. The special case `0⁻¹ = 0` is defined by convention.
+For input byte `b`, take `b⁻¹` in GF(2⁸) such that `b · b⁻¹ = 1`. The special case `0⁻¹ = 0` is defined by convention.
 
 This is the source of the S-box's **nonlinearity**. The map `b → b⁻¹` is highly nonlinear and defeats algebraic attacks.
 
@@ -171,7 +174,7 @@ The constant `0x63` ensures that no byte maps to itself (`sBox[x] ≠ x`) and no
 
 ### Inverse S-Box
 
-The inverse is constructed by inverting the affine transform then taking the multiplicative inverse. In this implementation it is built dynamically:
+The inverse table *is* derived at runtime — by inverting the forward S-box mapping rather than by re-applying the inverse affine transform plus inverse:
 
 ```go
 func buildInvSBox() [256]byte {
@@ -182,6 +185,8 @@ func buildInvSBox() [256]byte {
     return inv
 }
 ```
+
+This is a single O(256) pass at program initialization.
 
 ---
 
@@ -359,7 +364,7 @@ Note the order: `InvShiftRows` before `InvSubBytes`. These two commute (ShiftRow
 
 **Requirements:** Go 1.21+
 
-```bash
+```
 git clone https://github.com/kiazh/AES-128
 cd AES-128
 go run .
@@ -390,14 +395,36 @@ This vector is taken directly from FIPS 197, Appendix B.
 
 ---
 
+## What's Implemented vs. Hardcoded
+
+Quick map of what runs at runtime versus what is embedded as a constant, so there's no ambiguity about what this implementation actually computes:
+
+| Component | Status |
+| --- | --- |
+| GF(2⁸) multiplication (`gmul`) | **Computed at runtime** via Russian Peasant double-and-add |
+| MixColumns / InvMixColumns | **Computed at runtime** using `gmul` |
+| Forward S-box | **Hardcoded** as the FIPS-197 256-byte literal |
+| Inverse S-box | **Computed at startup** by inverting the forward S-box mapping |
+| Round constants (`rcon[10]`) | **Hardcoded** as the FIPS-197 sequence |
+| Key schedule (44 words → 11 round keys) | **Computed at runtime** from the input key |
+| State packing / unpacking | **Computed at runtime** |
+| Encryption / decryption (10 rounds) | **Computed at runtime** |
+
+### Planned
+
+* Generate the forward S-box from GF(2⁸) inverses + the affine transform, instead of using the hardcoded table.
+* Replace mode-3's interactive FIPS check with a proper `aes_test.go` covering FIPS-197 Appendix A (key expansion) and Appendix B (block encryption) vectors.
+
+---
+
 ## Security Notes
 
 This implementation is **educational**. It is not hardened for production use:
 
-- **No constant-time execution.** The `gmul` loop and S-box lookup are data-dependent. A real implementation must use constant-time table lookups or bitslicing to resist cache-timing attacks (e.g. Bernstein's 2005 AES cache-timing attack).
-- **No modes of operation.** This encrypts exactly one 16-byte block with a fixed key. Real systems need CBC, CTR, GCM, etc. to handle arbitrary-length messages and provide semantic security.
-- **Fixed key in CLI.** The `main.go` key `2b7e151628aed2a6abf7158809cf4f3c` is the FIPS test key — not for real use.
-- **No key zeroisation.** Round keys remain in memory after use. A hardened implementation should zero them with `runtime.KeepAlive` + `unsafe` or a dedicated scrubbing function.
+* **No constant-time execution.** The `gmul` loop and S-box lookup are data-dependent. A real implementation must use constant-time table lookups or bitslicing to resist cache-timing attacks (e.g. Bernstein's 2005 AES cache-timing attack).
+* **No modes of operation.** This encrypts exactly one 16-byte block with a fixed key. Real systems need CBC, CTR, GCM, etc. to handle arbitrary-length messages and provide semantic security.
+* **Fixed key in CLI.** The `main.go` key `2b7e151628aed2a6abf7158809cf4f3c` is the FIPS test key — not for real use.
+* **No key zeroisation.** Round keys remain in memory after use. A hardened implementation should zero them with `runtime.KeepAlive` + `unsafe` or a dedicated scrubbing function.
 
 For production Go code use `crypto/aes` from the standard library, which uses AES-NI hardware instructions and is constant-time.
 
@@ -405,6 +432,6 @@ For production Go code use `crypto/aes` from the standard library, which uses AE
 
 ## References
 
-- FIPS 197 — *Advanced Encryption Standard*, NIST (2001)
-- Joan Daemen, Vincent Rijmen — *The Design of Rijndael* (2002)
-- D.J. Bernstein — *Cache-timing attacks on AES* (2005)
+* FIPS 197 — *Advanced Encryption Standard*, NIST (2001)
+* Joan Daemen, Vincent Rijmen — *The Design of Rijndael* (2002)
+* D.J. Bernstein — *Cache-timing attacks on AES* (2005)
